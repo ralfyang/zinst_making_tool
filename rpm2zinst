@@ -4,11 +4,20 @@ BaseRoot=`cat /usr/bin/zinst |grep "^ZinstBaseRoot=" | awk -F'=' '{print $2}' | 
 Output_log=$BaseRoot/var/null
 
 # add feature -y option
-while getopts "y" opt
+while getopts "yo:" opt
 do
 	case $opt in
 		y)
 			Answ=y
+			;;
+		o)
+			#change upper character to lower character 
+			MakeOption=$(echo $OPTARG | tr [:upper:] [:lower:])
+			#check the input paramater and set default parameter to make 
+			if [[ $MakeOption != make && $MakeOption != auto ]]
+			then
+				MakeOption=make
+			fi
 			;;
 	esac
 done
@@ -87,7 +96,7 @@ CheckRPMCount=`rpm -qa |grep $PackageName | awk '{print NR}' | tail -1`
 					sudo chmod g+w -R ./*
 					cd ./$CheckRPMlist
 
-					$BaseRoot/bin/pkg_gen.sh make
+					$BaseRoot/bin/pkg_gen.sh $MakeOption
 					echo ""
 					echo "$BARR"
 					echo " zicf file has been created as below"
