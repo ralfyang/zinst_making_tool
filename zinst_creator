@@ -1,0 +1,169 @@
+#!/bin/bash
+# zinst package create manager   
+# Made by Jiook Yang
+# ralf.yang@gsshop.com
+# Version 1.0.4
+
+### Start Time stamping
+beginTime=$(date +%s%N)
+
+BaseRoot=`cat /usr/bin/zinst |grep "^ZinstBaseRoot=" | awk -F'=' '{print $2}' | sed -s 's/"//g'`
+
+ZinstDir="$BaseRoot/zinst"
+ZinstSourceDir="$BaseRoot/vault/Source"
+
+Output_log=$BaseRoot/var/null
+
+PWD=`pwd`
+cd $PWD
+
+if [[ `echo $1 | grep "\-"` != "" ]]
+	then
+		echo "==========================================="
+		echo " You can use \"-\" mark on package name "
+		echo " Please change a package name to the other "
+		echo "==========================================="
+		exit 0;
+		
+	fi
+
+
+
+
+zicf_checker=`echo $1 | grep "\.zicf"`
+
+### check .zicf file
+if [[ $zicf_checker = "" ]];
+then
+	echo "==========================================="
+	echo "Please make sure type the zicf target file"
+	echo "ex) zinst_creator start_tomcat.zicf"
+	echo "or you can use debug mode by \"--debug\" "
+	echo "==========================================="
+else
+
+	### Base infomation & zicf data parsing
+	ZICF=$1
+
+
+	Package_N=`cat $ZICF |grep ^PACKAGENAME |awk '{print $3}'`
+	OS=`cat $ZICF |grep ^OS |awk '{print $3}'`
+		if [[ $OS = "" ]];then
+			OS="rhel"
+		fi
+	Packagename="$OS--$Package_N"
+	Version=`cat $ZICF |grep ^VERSION |awk '{print $3}'`
+	Authorized=`cat $ZICF |grep ^AUTHORIZED |awk '{print $3}'` 
+	Owner=`cat $ZICF |grep ^OWNER |awk '{print $3}'`
+	Group=`cat $ZICF |grep ^GROUP |awk '{print $3}'`
+	Perm=`cat $ZICF |grep ^PERM |awk '{print $3}'`
+	Custodian=`cat $ZICF |grep ^CUSTODIAN |awk '{print $3}'`
+	Crontab=`cat $ZICF |grep ^CRON |awk '{print $1}'`
+
+
+	Description=`cat $ZICF |grep ^DESCRIPTION |awk '{print $0}'`
+
+
+	### Message output
+	echo ""
+	echo Making a package..... $PWD/$Packagename-$Version.zinst
+	echo ""
+
+
+	### File banding & compressing
+	## zicf 
+	tar cf $Packagename.tar $ZICF 2> $Output_log
+	echo $ZICF > filechecker
+
+	## Source File type
+	tar rf $Packagename.tar `cat ./$ZICF |grep ^FILE | awk '{print $6}'` 2> ./error.tmp ;cat ./error.tmp | sed -e 's/tar: //g'
+	rm -f ./error.tmp 2> $Output_log
+	cat ./$ZICF |grep ^FILE | awk '{print $6}' >> filechecker
+
+	## Conf File type
+	tar rf $Packagename.tar `cat ./$ZICF |grep ^CONF | awk '{print $6}'` 2> ./error.tmp ;cat ./error.tmp | sed -e 's/tar: //g'
+	rm -f ./error.tmp 2> $Output_log
+	cat ./$ZICF |grep ^CONF | awk '{print $6}' >> filechecker
+	
+
+	## Uninstall option check
+	UninstCheck=`cat ./$ZICF | grep "^ZINST" |grep activate-uninstall`
+		if [[ $UninstCheck != "" ]]; then
+			UninstFileChk=`cat ./uninstall.sh 2> /dev/null`
+				if [[ $UninstFileChk = "" ]]; then
+					echo "====================================================="
+					echo " If you need to make a package with UNINSTALL option"
+					echo " Please insert a uninstall command to ./uninstall.sh"
+					echo " "
+					echo " Package creator has been canceled !!!"
+					echo "====================================================="
+
+					rm -f ./filechecker $Packagename.tar
+
+					exit 0
+				else
+					tar rf $Packagename.tar ./uninstall.sh 2> ./error.tmp ;cat ./error.tmp | sed -e 's/tar: //g'
+					rm -f ./error.tmp 2> $Output_log
+					echo "./uninstall.sh" >> filechecker
+				fi
+		fi
+
+
+	## Compress and rename
+	gzip  $Packagename.tar 
+	mv $Packagename.tar.gz $Packagename-$Version.zinst 
+	sudo chmod 664 $Packagename-$Version.zinst
+	sudo chgrp wheel $Packagename-$Version.zinst
+
+	sed -i 's/\.\.\///g' filechecker 
+
+
+
+	### File checker 
+	File_checker=`cat ./filechecker`
+	Tar_file=`tar tvf ./$Packagename-$Version.zinst 2> $Output_log | awk '{print $6}'`
+
+#	if [[ $ZICF != "$Packagename.zicf" ]];
+#	then
+#		echo "====================================================================="
+#		echo "  Package-name in the zicf is not same with zicf-file name."
+#		echo "  Please check this issue out and create new name for make sure that."
+#		echo "  or please remove directory name like this ./  "
+#		echo "====================================================================="
+#		rm -f ./$Packagename-$Version.zinst 
+#	fi
+
+	if [[ $File_checker != $Tar_file ]];
+	then
+		echo "====================================================================="
+		echo "Error has been occurred. Please check the file list in the zicf again"
+		echo "====================================================================="
+		rm -f ./$Packagename-$Version.zinst 
+	fi
+
+
+	if [[ $2 = "--debug" ]]
+	then	
+		echo "====================================================================="
+		echo  zicf file checking...
+		echo "====================================================================="
+		echo "$File_checker"
+		echo "====================================================================="
+		echo ""
+		echo ""
+		echo "====================================================================="
+		echo  Package file checking...
+		echo "====================================================================="
+		echo "$Tar_file"
+	else
+		rm -f ./filechecker
+	fi
+fi
+
+sudo rm -f $Output_log > /dev/null
+
+## Print time for result
+endTime=$(date +%s%N)
+elapsed=`echo "($endTime - $beginTime) / 1000000" | bc`
+elapsedSec=`echo "scale=6;$elapsed / 1000" | bc | awk '{printf "%.6f", $1}'`
+echo TOTAL: $elapsedSec sec

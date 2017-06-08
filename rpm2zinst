@@ -1,0 +1,99 @@
+#!/bin/bash
+BaseRoot=`cat /usr/bin/zinst |grep "^ZinstBaseRoot=" | awk -F'=' '{print $2}' | sed -s 's/"//g'`
+
+Output_log=$BaseRoot/var/null
+
+# add feature -y option
+while getopts "y" opt
+do
+	case $opt in
+		y)
+			Answ=y
+			;;
+	esac
+done
+
+shift $(( $OPTIND  -1 ))
+PackageName=$1
+#Check a package
+
+BARR="##############################################################################"
+ROWW="=============================================================================="
+	if [[ $PackageName = ""  ]]
+	then
+		echo ""
+		echo "$BARR"
+		echo " Please insert a Package name for search & package create"
+		echo "$ROWW"
+		echo " ex) rpm2zinst perl-CPAN"
+		echo "$BARR"
+		exit 0;
+	fi
+
+# check os release version and set OS_type
+	if [[ `(zinst set |grep "zinst_making_tool.OS_type" | awk -F "=" '{print $2}') | sed -e 's/"//g'` = "OS" ]];then
+		if [[ `(grep "CentOS" /etc/redhat-release 2> /dev/null |grep "[0-9]" | sed -e 's/[ a-zA-Z()]//g' |grep "^7")` ]] || [[ `(grep "Red Hat" /etc/redhat-release 2> /dev/null |grep "[0-9]" | sed -e 's/[ a-zA-Z()]//g' |grep "^7")` ]] ;then
+			zinst set zinst_making_tool.OS_type="rhel7"
+		else
+			zinst set zinst_making_tool.OS_type="rhel"
+		fi
+	fi
+
+CheckRPMlist=`rpm -qa |grep $PackageName`
+CheckRPMCount=`rpm -qa |grep $PackageName | awk '{print NR}' | tail -1`
+
+
+	if [[ $CheckRPMCount != "1"  ]]
+	then
+		echo ""
+		echo "$BARR"
+		echo " You have a lot of packages as you typed \"$PackageName\""
+		echo "$ROWW"
+		echo "$CheckRPMlist"
+		echo "$ROWW"
+		echo " Please insert a package name exactly as an above list for only one"
+		echo "$BARR"
+	else
+		# add feature -y option. ask menu show only -y options doesn't include excute
+    if [ -z $Answ ]
+		then
+			echo ""
+			echo "$BARR"
+			echo "What you want package is $CheckRPMlist right? [ y / n ]"
+			echo "$BARR"
+			read Answ
+		fi
+				if [[ $Answ = "y" ]]
+				then
+					echo "tar zcf $CheckRPMlist.tgz " > ./.rpm2zinst_tmp
+					rpm -ql $CheckRPMlist >> ./.rpm2zinst_tmp
+					sed -i 's/$/ \\/g' ./.rpm2zinst_tmp
+					echo " " >> ./.rpm2zinst_tmp
+					sh ./.rpm2zinst_tmp 2> $Output_log
+					rm -Rf ./.rpm2zinst_tmp
+
+					echo ""
+					echo "$BARR"
+					echo "      $CheckRPMlist.tgz package has been created"
+					echo "$BARR"
+
+					mkdir -p ./$CheckRPMlist/z
+					mv $CheckRPMlist.tgz ./$CheckRPMlist/z/
+					cd ./$CheckRPMlist/z
+					tar zxf $CheckRPMlist.tgz
+					rm -Rf $CheckRPMlist.tgz
+					cd ../..
+					sudo chgrp wheel -R ./*
+					sudo chmod g+w -R ./*
+					cd ./$CheckRPMlist
+
+					$BaseRoot/bin/pkg_gen.sh make
+					echo ""
+					echo "$BARR"
+					echo " zicf file has been created as below"
+					ls |grep zicf |awk '{print "'$PWD'/" $1}'
+					echo "$ROWW"
+					echo " You can modify that zicf file for a package create!!"
+					echo "$BARR"
+				fi
+	fi

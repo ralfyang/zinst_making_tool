@@ -1,0 +1,86 @@
+#!/bin/bash
+Target_file=$1
+File=`echo $Target_file | awk -F '--' '{print $2}'`
+
+BaseRoot=`cat /usr/bin/zinst |grep "^ZinstBaseRoot=" | awk -F'=' '{print $2}' | sed -s 's/"//g'`
+
+OS_direction(){
+	case $OS_name in  
+		rhel ) 
+			OS_type="/rhel" ;;
+		rhel7 ) 
+			OS_type="/rhel7" ;;
+		ubuntu ) 
+			OS_type="/ubuntu" ;;  
+		osx )
+			OS_type="/osx" ;; 
+		freebsd ) 
+			OS_type="/freebsd" ;;
+		*)
+			OS_type="" ;;
+	esac
+}
+
+SourceRoot="$BaseRoot/vault"
+SourceDir="$SourceRoot/Source"
+Dist_server=`cat /usr/bin/zinst | egrep "^Dist_server" | awk -F '=' '{print $2}' | sed -e 's/\"http\:\/\///g' -e 's/\"//g'`
+
+### Check a package name
+CheckFile=`echo $Target_file | grep "[a-z.0-9].zinst"`
+if [[ $CheckFile = "" ]]
+then
+	echo "========================================================================"
+	echo "  === This is not a zinst package. Please check this file out again. ==="
+	echo "========================================================================"
+	exit 0;
+
+else
+	### Check a file on this Dir
+	CheckExist=`ls ./ |grep ^$Target_file$`
+	if [[ $CheckExist = "" ]]
+	then
+		echo "========================================================================"
+		echo " $Target_file file dosen't exist on this directory. "
+		echo " Please go to the directory exactly"
+		echo "========================================================================"
+		exit 0;
+	fi
+
+
+fi
+
+
+### Temporary Dir create and fetch the the zicf on compressed file
+mkdir -p $SourceRoot/Temp/package_dist_install;
+mv $Target_file  $SourceRoot/Temp/package_dist_install;
+cd $SourceRoot/Temp/package_dist_install; 
+tar zxfp ./$Target_file  *.zicf 
+
+
+OS_name=`grep "^OS" ./*.zicf | awk -F '=' '{print $2}' |sed -e 's/ //g'`
+OS_direction $OS_name
+
+Dist="$BaseRoot/dist$OS_type"
+
+echo "================================================================================"
+echo " $Target_file file has been sent to Distribution server"
+echo "================================================================================"
+
+
+### File Copy and move to Dist Dir
+mv $Target_file $File
+scp ./$File $Dist_server:$Dist/$File
+
+### Find Package name
+head -14 *.zicf |sed -e 's/ = /=/g' > package_dist_list.info;
+
+### Fetch a dependecy file list
+CheckRequireRaw=`cat *.zicf |grep "^ZINST requires pkg "| awk '{print $4}'`
+CheckRequire=`echo $CheckRequireRaw`
+
+### Move a zicf file to Dist dir
+scp *.zicf $Dist_server:$Dist/checker/`echo "$File" | sed -e 's/.zinst$/.zinst.zicf/g'`
+
+### Remove a Temporary Dir
+cd $BaseRoot
+rm -Rf $SourceRoot/Temp
