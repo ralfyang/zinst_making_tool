@@ -5,7 +5,7 @@ while getopts "n:t:O:G:P:u" opt
 do
 	case $opt in
 		n)
-			PackageName=$OPTARG	
+			PackageName=$OPTARG
 	                ;;
 		t)
 			OS_type=$OPTARG
@@ -385,8 +385,8 @@ case $Option in
                         Permission="664"
                 fi
 		print_package_name_define
-		zicf=$PackageName
-		zicfN=$PackageName".zicf"
+	 	zicf=$(echo $PackageName | sed -e "s/-//" | awk -F$(rpm -q --info $PackageName  | grep Version | awk -F": " '{print $2}') '{print $1}')
+		zicfN=$zicf".zicf"
 		print_os_type
 		echo $OS_type
 		print_desc
