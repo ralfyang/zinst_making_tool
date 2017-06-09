@@ -1,7 +1,4 @@
 #!/bin/bash
-BaseRoot=`cat /usr/bin/zinst |grep "^ZinstBaseRoot=" | awk -F'=' '{print $2}' | sed -s 's/"//g'`
-
-Output_log=$BaseRoot/var/null
 
 # add feature -y option
 while getopts "yo:" opt
@@ -25,6 +22,11 @@ done
 shift $(( $OPTIND  -1 ))
 PackageName=$1
 #Check a package
+
+BaseRoot=$(cat /usr/bin/zinst |grep "^ZinstBaseRoot=" | awk -F'=' '{print $2}' | sed -s 's/"//g')
+Output_log=$BaseRoot/var/null
+
+#define function 
 function print_bar ()
 {
 	echo "##############################################################################"
@@ -43,6 +45,9 @@ function print_help ()
 	print_row
 	echo " ex) rpm2zinst perl-CPAN"
 	echo " -y  answer yes for all questions"
+	echo " ex) rpm2zinst -y perl-CPAN"
+	echo " -o  set making zinst package manual or auto default is make"
+	echo " ex) rpm2zinst -o auto perl-CPAN"
 	print_bar
 }
 
@@ -51,20 +56,26 @@ then
 	print_help
 	exit 0;
 fi
+echo "Build option is "$MakeOption
 
 # check os release version and set OS_type
-if [[ `(zinst set |grep "zinst_making_tool.OS_type" | awk -F "=" '{print $2}') | sed -e 's/"//g'` = "OS" ]]
+if [[ $(zinst set |grep "zinst_making_tool.OS_type" | awk -F "=" '{print $2}' | sed -e 's/"//g') = "OS" ]]
 then
-	if [[ `(grep "CentOS" /etc/redhat-release 2> /dev/null |grep "[0-9]" | sed -e 's/[ a-zA-Z()]//g' |grep "^7")` ]] || [[ `(grep "Red Hat" /etc/redhat-release 2> /dev/null |grep "[0-9]" | sed -e 's/[ a-zA-Z()]//g' |grep "^7")` ]] 
+	if [[ $(grep "CentOS" /etc/redhat-release 2> /dev/null |grep "[0-9]" | sed -e 's/[ a-zA-Z()]//g' |grep "^7") ]] || [[ $(grep "Red Hat" /etc/redhat-release 2> /dev/null |grep "[0-9]" | sed -e 's/[ a-zA-Z()]//g' |grep "^7") ]] 
 	then
 		zinst set zinst_making_tool.OS_type="rhel7"
+		OS_type=rhel7
 	else
 		zinst set zinst_making_tool.OS_type="rhel"
+		OS_type=rhel
 	fi
+else
+	OS_type=$(zinst set |grep "zinst_making_tool.OS_type" | awk -F "=" '{print $2}' | sed -e 's/"//g')
 fi
 
-CheckRPMlist=`rpm -qa |grep $PackageName`
-CheckRPMCount=`rpm -qa |grep $PackageName | awk '{print NR}' | tail -1`
+CheckRPMlist=$(rpm -qa |grep $PackageName)
+CheckRPMCount=$(rpm -qa |grep $PackageName | awk '{print NR}' | tail -1)
+CheckRPMDependency=$(rpm -qR $PackageName | grep = | grep -v rpmlib | awk -F= '{print $1}' | sed -e "s/(.*)//g")
 
 
 if [[ $CheckRPMCount != "1"  ]]
@@ -78,96 +89,53 @@ then
 	echo " Please insert a package name exactly as an above list for only one"
 	print_bar
 else
-	# add feature -y option. ask menu show only -y options doesn't include excute
 	if [ -z $Answ ]
 	then
 		echo ""
-<<<<<<< HEAD
 		print_bar
 		echo "What you want package is $CheckRPMlist right? [ y / n ]"
 		print_bar
 		read Answ
 	fi
-	if [[ $Answ = "y" ]]
-	then
-		echo "tar zcf $CheckRPMlist.tgz " > ./.rpm2zinst_tmp
-		rpm -ql $CheckRPMlist >> ./.rpm2zinst_tmp
-		sed -i 's/$/ \\/g' ./.rpm2zinst_tmp
-		echo " " >> ./.rpm2zinst_tmp
-		sh ./.rpm2zinst_tmp 2> $Output_log
-		rm -Rf ./.rpm2zinst_tmp
-		echo ""
+       	if [[ $Answ = "y" ]]
+        then
+                echo "tar zcf $CheckRPMlist.tgz " > ./.rpm2zinst_tmp
+                rpm -ql $CheckRPMlist >> ./.rpm2zinst_tmp
+		for i in $CheckRPMDependency
+		do
+			rpm -ql $i | sed  -e '/^\//!d'>> ./.rpm2zinst_tmp
+		done
+                sed -i 's/$/ \\/g' ./.rpm2zinst_tmp
+                echo " " >> ./.rpm2zinst_tmp
+                #sh ./.rpm2zinst_tmp 2> $Output_log
+                sh ./.rpm2zinst_tmp 
+#                rm -Rf ./.rpm2zinst_tmp
+
+                echo ""
 		print_bar
-		echo "      $CheckRPMlist.tgz package has been created"
+                echo "      $CheckRPMlist.tgz package has been created"
 		print_bar
-		mkdir -p ./$CheckRPMlist/z
-		mv $CheckRPMlist.tgz ./$CheckRPMlist/z/
-		cd ./$CheckRPMlist/z
-		tar zxf $CheckRPMlist.tgz
-		rm -Rf $CheckRPMlist.tgz
-		cd ../..
-		sudo chgrp wheel -R ./*
-		sudo chmod g+w -R ./*
-		cd ./$CheckRPMlist
-		$BaseRoot/bin/pkg_gen.sh make
-		echo ""
+
+                mkdir -p ./$CheckRPMlist/z
+                mv $CheckRPMlist.tgz ./$CheckRPMlist/z/
+                cd ./$CheckRPMlist/z
+                tar zxf $CheckRPMlist.tgz
+                rm -Rf $CheckRPMlist.tgz
+                cd ../..
+                sudo chgrp wheel -R ./*
+                sudo chmod g+w -R ./*
+                cd ./$CheckRPMlist
+
+		#echo "os type is"$OS_type
+		#echo "Package name is "$PackageName
+		#echo "Build option is "$MakeOption
+		$BaseRoot/bin/pkg_gen.sh -t $OS_type -n $PackageName  $MakeOption
+                echo ""
 		print_bar
-		echo " zicf file has been created as below"
-		ls |grep zicf |awk '{print "'$PWD'/" $1}'
+                echo " zicf file has been created as below"
+                ls |grep zicf |awk '{print "'$PWD'/" $1}'
 		print_row
-		echo " You can modify that zicf file for a package create!!"
+                echo " You can modify that zicf file for a package create!!"
 		print_bar
-=======
-		echo "$BARR"
-		echo " You have a lot of packages as you typed \"$PackageName\""
-		echo "$ROWW"
-		echo "$CheckRPMlist"
-		echo "$ROWW"
-		echo " Please insert a package name exactly as an above list for only one"
-		echo "$BARR"
-	else
-		# add feature -y option. ask menu show only -y options doesn't include excute
-    if [ -z $Answ ]
-		then
-			echo ""
-			echo "$BARR"
-			echo "What you want package is $CheckRPMlist right? [ y / n ]"
-			echo "$BARR"
-			read Answ
-		fi
-				if [[ $Answ = "y" ]]
-				then
-					echo "tar zcf $CheckRPMlist.tgz " > ./.rpm2zinst_tmp
-					rpm -ql $CheckRPMlist >> ./.rpm2zinst_tmp
-					sed -i 's/$/ \\/g' ./.rpm2zinst_tmp
-					echo " " >> ./.rpm2zinst_tmp
-					sh ./.rpm2zinst_tmp 2> $Output_log
-					rm -Rf ./.rpm2zinst_tmp
-
-					echo ""
-					echo "$BARR"
-					echo "      $CheckRPMlist.tgz package has been created"
-					echo "$BARR"
-
-					mkdir -p ./$CheckRPMlist/z
-					mv $CheckRPMlist.tgz ./$CheckRPMlist/z/
-					cd ./$CheckRPMlist/z
-					tar zxf $CheckRPMlist.tgz
-					rm -Rf $CheckRPMlist.tgz
-					cd ../..
-					sudo chgrp wheel -R ./*
-					sudo chmod g+w -R ./*
-					cd ./$CheckRPMlist
-
-					$BaseRoot/bin/pkg_gen.sh $MakeOption
-					echo ""
-					echo "$BARR"
-					echo " zicf file has been created as below"
-					ls |grep zicf |awk '{print "'$PWD'/" $1}'
-					echo "$ROWW"
-					echo " You can modify that zicf file for a package create!!"
-					echo "$BARR"
-				fi
->>>>>>> 8ab562042031f85bf164212a90d0c7b9a74eda3f
 	fi
 fi

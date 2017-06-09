@@ -1,155 +1,75 @@
 #!/bin/bash
 # zinst_making_tool version 1.2.9
 
-BaseRoot=`cat /usr/bin/zinst |grep "^ZinstBaseRoot=" | awk -F'=' '{print $2}' | sed -s 's/"//g'`
-export TIME_STYLE="+%Y-%m-%d %H:%M:%S"
+while getopts "n:t:O:G:P:u" opt
+do
+	case $opt in
+		n)
+			PackageName=$OPTARG	
+	                ;;
+		t)
+			OS_type=$OPTARG
+			;;
+		O)
+			Owner=$OPTARG
+                        if [[  -z $PackageOwner ]]
+                        then
+                        	Owner=root
+                        fi
+			;;
+		G)
+			Group=$OPTARG
+                        if [[  -z $PackageGroup ]]
+                        then
+                        	Group=wheel
+                        fi
+			;;
+		P)
+			Permission=$OPTARG
+                        if [[  -z $PackagePerm ]]
+                        then
+                        	Permission=664
+                        fi
+			;;
+		u)
+			Unin_comm=n
+			;;
+        esac
+done
+shift $(( $OPTIND  -1 ))
 
 Option=$1
 Option2=$2
 
+BaseRoot=$(grep "^ZinstBaseRoot=" /usr/bin/zinst | awk -F'=' '{print $2}' | sed -s 's/"//g')
+export TIME_STYLE="+%Y-%m-%d %H:%M:%S"
 OutputLog=$BaseRoot/var/null
 #OutputLog=/dev/null
 
-mailing=code-post.com
-OS_type="OS"
+echo "package name is "$PackageName
+echo "OS Type is "$OS_type
 
-	if [[ $Option = "make" ]]
-	then
-		Account=`whoami`
-		Tar="package_creator.tgz"
-		PWD=`pwd`
-		Dir=`echo $PWD |awk -F '/' '{print $NF}'`
-		## Package name define
+mailing=code-post.com
+Account=$(who am i | awk '{print $1}')
+Tar="package_creator.tgz"
+PWD=$(pwd)
+Dir=$(pwd |awk -F '/' '{print $NF}')
+Desc=$(rpm -q --info $PackageName | sed -e "/:/d")
+Ver=$(rpm -q --info $PackageName | grep Version | awk -F": " '{print $2}')
+
+function print_package_name_define ()
+{
 		echo " "
 		echo " === Please insert an information for the index file create ==="
 		echo " "
-		echo " * [ Package name: Default=$Dir ] ="
+		echo " * [ Package name: Default=$PackageName ] ="
 		echo " ! Notice: You only can use a package name with Alphabet, Number, _(underscore) combination"
-		read zicf
-			if [[ $zicf = "" ]]; then	
-				zicf=$Dir
-			fi
 
-		## Index file name define
-		zicfN="$zicf.zicf"
 
-		if [[ $OS_type = "OS" ]];then
-			## OS type
-			echo " OS type: rhel7 or rhel, ubuntu, osx, freebsd"
-			echo " * [ OS Type] ="
-			read OS_type
-				if [[ $OS_type = "" ]]; then	
-					Desc="Please insert an OS name for package environment"
-				fi
-		fi
+}
 
-		## Description
-		echo " "
-		echo " * [ Description] ="
-		read Desc
-			if [[ $Desc = "" ]]; then	
-				Desc="Please insert a description for this package"
-			fi
-  
-		## Version
-		echo " "
-		echo " * [ Version: Default=0.0.1 ] = "
-		read Ver
-			if [[ $Ver = "" ]]; then	
-				Ver="0.0.1"
-			fi
-
-		## Deafult Owner
-		echo " "
-		echo " * [ Default Owner: Default=root ] = "
-		read Owner
-			if [[ $Owner = "" ]]; then	
-				Owner="root"
-			fi
-
-		## Deafult Owner
-		echo " "
-		echo " * [ Default Group: Default=wheel ] = "
-		read Group
-			if [[ $Group = "" ]]; then	
-				Group="wheel"
-			fi
-  
-		## Deafult Permission
-		echo " "
-		echo " * [ Defaut Permission: Default=664 ] = "
-		read Permission
-			if [[ $Permission = "" ]]; then	
-				Permission="664"
-			fi
-
-		## Uninstall command
-		echo " "
-		echo " Do you need a some command when this pacakge removed ?"
-		echo " * [ y/n : Default=n ] = "
-		read Unin_com
-			if [[ $Unin_com = "" ]] || [[ $Unin_com = "n" ]]; then	
-				Uninstall_comm="#ZINST activate-uninstall"
-			else 
-				Uninstall_comm="ZINST activate-uninstall"
-				touch ./uninstall.sh
-				sudo chmod 775 ./uninstall.sh
-			fi
-		## Require package
-		Barr="======================================================="
-		echo " "
-		echo " Do you have a required pacakge ?"
-		echo " * [ y/n : Default= n ]"
-		read Requires_pkg
-			if [[ $Requires_pkg = "" ]] || [[ $Unin_com = "n" ]]; then
-				Require_package="#ZINST requires pkg perl-log4j"
-			else
-				ElsePkg="y"
-				OutGoing="0"
-				while [ $ElsePkg = "y" ]; do
-					echo ""
-					echo " * Please insert a package name ="
-					read ReqPkg
-					echo $Barr
-						if [[ $ReqPkg != "" ]]; then
-							Count=0
-							ResultArry=(`zinst find $ReqPkg | awk -F '-' '{print $1}' | sort -u`)
-								while [ $Count -lt ${#ResultArry[@]} ]; do
-								let NumM=$Count+1
-									printf " %-50s %-10s\n" "${ResultArry[$Count]}" "[${NumM}]"
-								let Count=$Count+1
-								done
-								if [[ ${ResultArry[@]} != "" ]];then
-									echo $Barr
-									echo " * Please insert a number what you need [ 1 - ${#ResultArry[@]} ] ?"
-									read PkgNum
-										if [[ $PkgNum != "" ]]; then
-											let PkgNum=$PkgNum-1
-											echo " [ ${ResultArry[$PkgNum]} ] package has been selected. "
-											ReqPkgArry[$OutGoing]=${ResultArry[$PkgNum]}
-										else
-											echo " Nothing selected. "
-										fi
-								else
-									echo "  === Package name is not correct. ==="
-								fi
-						fi
-					echo ""
-					echo " Do you need more package require ? [y/n]"
-					read ElsePkg
-						if [[ $ElsePkg = "n" ]] || [[ $ElsePkg = "N" ]] || [[ $ElsePkg = "" ]] ;then
-							break ;
-						fi
-					let OutGoing=OutGoing+1
-				done
-
-					if [[ ${ReqPkgArry[@]} != "" ]] ;then
-						Require_package="ZINST requires pkg ${ReqPkgArry[@]}"
-					else
-						Require_package="#ZINST requires pkg perl-log4j"
-					fi
-
-			fi
+function make_zcif ()
+{
 
 		## Make sure the work directory
 		cd $PWD
@@ -248,24 +168,24 @@ OS_type="OS"
 		grep "^SYMB x" $zicfN | awk '{print $1,$2,$3,$4,$6,"\t",$5}' > ./symb.txt
 
 
-		RowCount=`cat symb.txt |awk '{print NR}' | tail -1`
+		RowCount=$(cat symb.txt |awk '{print NR}' | tail -1)
 		Count=1
 		touch ParsedSymb.txt
 			while [[ $Count -le $RowCount ]]
 			do
-				RowSymb=`cat symb.txt |awk 'NR=='$Count' {print }' `
-				ChangedIndex=`echo $RowSymb | awk '{print $1,$2,$3,$4,$5}' | sed -e 's/\.\///g'`
-				TargetSymb=`echo "$RowSymb" | awk '{print $5}'`
-				OriginFile=`echo "$TargetSymb" | awk -F '/' '{print $NF}'`
-				OriginDir=`echo "$TargetSymb" | sed -e "s/$OriginFile//g"`
-				FixedDir=`echo "$OriginDir" | sed -e "s/^\.\///g"`
-				ResultSymb=`ls -l $OriginDir | grep " $OriginFile " |awk '{print $10}'`
+				RowSymb=$(cat symb.txt |awk 'NR=='$Count' {print }' )
+				ChangedIndex=$(echo $RowSymb | awk '{print $1,$2,$3,$4,$5}' | sed -e 's/\.\///g')
+				TargetSymb=$(echo "$RowSymb" | awk '{print $5}')
+				OriginFile=$(echo "$TargetSymb" | awk -F '/' '{print $NF}')
+				OriginDir=$(echo "$TargetSymb" | sed -e "s/$OriginFile//g")
+				FixedDir=$(echo "$OriginDir" | sed -e "s/^\.\///g")
+				ResultSymb=$(ls -l $OriginDir | grep " $OriginFile " |awk '{print $10}')
 			
-				DirCheck=`echo $ResultSymb | grep "/"`
-					if [[ $DirCheck = "" ]]
-					then
-						ResultSymb=$FixedDir$ResultSymb
-					fi
+				DirCheck=$(echo $ResultSymb | grep "/")
+				if [[ $DirCheck = "" ]]
+				then
+					ResultSymb=$FixedDir$ResultSymb
+				fi
 			
 				echo -e "$ChangedIndex \t $ResultSymb" >> ParsedSymb.txt
 			
@@ -283,15 +203,225 @@ OS_type="OS"
 			fi
  
 		## Clear Temporary files
-	    sudo chmod 664 ./$zicfN
-	    sudo chgrp wheel ./$zicfN
+		sudo chmod 664 ./$zicfN
+		sudo chgrp wheel ./$zicfN
 		rm -f ./perm.txt ./$Tar ./Package_gen.sh ./listup ./Package.zicf ./$zicfN.footer  ./symb.txt ParsedSymb.txt
+}
 
-	else
+function print_os_type ()
+{
+	echo " OS type: rhel7 or rhel, ubuntu, osx, freebsd"
+	echo " * [ OS Type] ="
+}
+function print_desc ()
+{
+	echo " "
+	echo " * [ Description] ="
+}
+function print_ver ()
+{
+	echo " "
+	echo " * [ Version: Default=0.0.1 ] = "
+}
+function print_owner ()
+{
+	echo " "
+	echo " * [ Default Owner: Default=root ] = "
+}
+function print_group ()
+{
+	echo " "
+	echo " * [ Default Group: Default=wheel ] = "
+}
+function print_permission ()
+{
+	echo " "
+	echo " * [ Defaut Permission: Default=664 ] = "
+}
+function print_uninstall ()
+{
+	echo " "
+	echo " Do you need a some command when this pacakge removed ?"
+	echo " * [ y/n : Default=n ] = "
+}
+	
+echo "Build option is "$Option
+
+case $Option in
+	make)
+		## Package name define
+		print_package_name_define
+		read zicf
+			if [[ $zicf = "" ]]; then	
+				zicf=$Dir
+			fi
+
+		## Index file name define
+		zicfN="$zicf.zicf"
+
+		if [[ $OS_type = "OS" ]];then
+			## OS type
+			print_os_type
+			read OS_type
+				if [[ $OS_type = "" ]]; then	
+					Desc="Please insert an OS name for package environment"
+				fi
+		fi
+
+		## Description
+		print_desc
+		read Desc
+			if [[ $Desc = "" ]]; then	
+				Desc="Please insert a description for this package"
+			fi
+  
+		## Version
+		print_ver
+		read Ver
+			if [[ $Ver = "" ]]; then	
+				Ver="0.0.1"
+			fi
+
+		## Deafult Owner
+		print_owner
+		read Owner
+			if [[ $Owner = "" ]]; then	
+				Owner="root"
+			fi
+
+		## Deafult Group
+		print_group
+		read Group
+			if [[ $Group = "" ]]; then	
+				Group="wheel"
+			fi
+  
+		## Deafult Permission
+		print_permission
+		read Permission
+			if [[ $Permission = "" ]]; then	
+				Permission="664"
+			fi
+
+		## Uninstall command
+		print_uninstall
+		read Unin_com
+			if [[ $Unin_com = "" ]] || [[ $Unin_com = "n" ]]; then	
+				Uninstall_comm="#ZINST activate-uninstall"
+			else 
+				Uninstall_comm="ZINST activate-uninstall"
+				touch ./uninstall.sh
+				sudo chmod 775 ./uninstall.sh
+			fi
+		## Require package
+		Barr="======================================================="
+		echo " "
+		echo " Do you have a required pacakge ?"
+		echo " * [ y/n : Default= n ]"
+		read Requires_pkg
+			if [[ $Requires_pkg = "" ]] || [[ $Unin_com = "n" ]]; then
+				Require_package="#ZINST requires pkg perl-log4j"
+			else
+				ElsePkg=y
+				OutGoing=0
+				while [ $ElsePkg = "y" ]; do
+					echo ""
+					echo " * Please insert a package name ="
+					read ReqPkg
+					echo $Barr
+						if [[ $ReqPkg != "" ]]; then
+							Count=0
+							ResultArry=$(zinst find $ReqPkg | awk -F '-' '{print $1}' | sort -u)
+								while [ $Count -lt ${#ResultArry[@]} ]; do
+								let NumM=$Count+1
+									printf " %-50s %-10s\n" "${ResultArry[$Count]}" "[${NumM}]"
+								let Count=$Count+1
+								done
+								if [[ ${ResultArry[@]} != "" ]];then
+									echo $Barr
+									echo " * Please insert a number what you need [ 1 - ${#ResultArry[@]} ] ?"
+									read PkgNum
+										if [[ $PkgNum != "" ]]; then
+											let PkgNum=$PkgNum-1
+											echo " [ ${ResultArry[$PkgNum]} ] package has been selected. "
+											ReqPkgArry[$OutGoing]=${ResultArry[$PkgNum]}
+										else
+											echo " Nothing selected. "
+										fi
+								else
+									echo "  === Package name is not correct. ==="
+								fi
+						fi
+					echo ""
+					echo " Do you need more package require ? [y/n]"
+					read ElsePkg
+						if [[ $ElsePkg = "n" ]] || [[ $ElsePkg = "N" ]] || [[ $ElsePkg = "" ]] ;then
+							break ;
+						fi
+					let OutGoing=OutGoing+1
+				done
+
+					if [[ ${ReqPkgArry[@]} != "" ]] ;then
+						Require_package="ZINST requires pkg ${ReqPkgArry[@]}"
+					else
+						Require_package="#ZINST requires pkg perl-log4j"
+					fi
+
+			fi
+
+		make_zcif
+	;;
+	auto)
+                if [[  -z $PackageOwner ]]
+                then
+                	Owner="root"
+                fi
+                if [[  -z $PackageGroup ]]
+                then
+                	Group="wheel"
+                fi
+                if [[  -z $PackagePerm ]]
+                then
+                        Permission="664"
+                fi
+		print_package_name_define
+		zicf=$PackageName
+		zicfN=$PackageName".zicf"
+		print_os_type
+		echo $OS_type
+		print_desc
+		echo $Desc
+		print_ver
+		echo $ver
+		print_owner
+		echo $Owner
+		print_group
+		echo $group
+		print_permission
+		echo $permission
+		print_uninstall
+		if [[ $Unin_com = "" ]] || [[ $Unin_com = "n" ]]; then	
+			Uninstall_comm="#ZINST activate-uninstall"
+		else 
+			Uninstall_comm="ZINST activate-uninstall"
+			touch ./uninstall.sh
+			sudo chmod 775 ./uninstall.sh
+		fi
+		Barr="======================================================="
+		echo " "
+		echo " Auto Build mode Doesn't support required pacakge"
+		echo " * [ y/n : Default= n ]"
+		Require_package="#ZINST requires pkg perl-log4j"
+		make_zcif
+		
+	;;
+		
+	*)
 		echo ""
 		echo "===================================================================================="
 		echo "= make: Make a new zicf file as a filelist in current directory                    ="
 		echo "= make -default: Set default directory add as \"z/temp/~\" before the result files   ="
 		echo "===================================================================================="
 		exit 0;
-	fi
+	;;
+esac
